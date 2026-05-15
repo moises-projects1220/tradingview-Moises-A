@@ -9,7 +9,7 @@
 body { background: #131722; color: #d1d4dc; font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', sans-serif; height: 100vh; overflow: hidden; }
 #app { display: flex; flex-direction: column; height: 100vh; }
 #header { background: #1e222d; border-bottom: 1px solid #2a2e39; padding: 0 12px; height: 46px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
-#header-title { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: 0.3px; }
+#header-title { font-size: 15px; font-weight: 700; color: #fff; }
 #header-title span { color: #2962ff; }
 #symbol-display { font-size: 13px; font-weight: 600; color: #fff; background: #2a2e39; padding: 4px 10px; border-radius: 4px; }
 #price-display { font-size: 13px; font-weight: 600; color: #26a69a; }
@@ -25,15 +25,14 @@ body { background: #131722; color: #d1d4dc; font-family: -apple-system, BlinkMac
 .wl-symbol { font-size: 12px; font-weight: 600; color: #d1d4dc; }
 .wl-price { font-size: 11px; color: #787b86; margin-top: 2px; }
 .wl-change { font-size: 10px; margin-top: 1px; }
-.up { color: #26a69a; }
-.dn { color: #ef5350; }
+.up { color: #26a69a; } .dn { color: #ef5350; }
 #chart-area { flex: 1; position: relative; overflow: hidden; }
 #chart { width: 100%; height: 100%; }
-#watermark { position: absolute; bottom: 8px; left: 12px; font-size: 11px; color: rgba(255,255,255,0.18); pointer-events: none; z-index: 10; letter-spacing: 0.3px; user-select: none; }
+#watermark { position: absolute; bottom: 8px; left: 12px; font-size: 11px; color: rgba(255,255,255,0.18); pointer-events: none; z-index: 10; user-select: none; }
 #legend { position: absolute; top: 8px; left: 12px; font-size: 11px; pointer-events: none; z-index: 10; }
 .legend-item { display: flex; align-items: center; gap: 5px; margin-bottom: 2px; }
 .legend-dot { width: 20px; height: 2px; border-radius: 1px; }
-#loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); color: #787b86; font-size: 13px; }
+#loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); color: #787b86; font-size: 13px; text-align: center; }
 #selector-bar { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 </style>
 </head>
@@ -42,16 +41,16 @@ body { background: #131722; color: #d1d4dc; font-family: -apple-system, BlinkMac
   <div id="header">
     <div id="header-title">Trading<span>View</span> <span style="color:#787b86;font-weight:400;font-size:12px;">by Moises Angarita</span></div>
     <div style="width:1px;height:20px;background:#2a2e39;"></div>
-    <div id="symbol-display">BTCUSDT</div>
+    <div id="symbol-display">BTC/USD</div>
     <div id="price-display">--</div>
     <div id="change-display">--</div>
     <div id="selector-bar">
-      <button class="tf-btn active" data-tf="1m">1m</button>
-      <button class="tf-btn" data-tf="5m">5m</button>
-      <button class="tf-btn" data-tf="15m">15m</button>
-      <button class="tf-btn" data-tf="1h">1h</button>
-      <button class="tf-btn" data-tf="4h">4h</button>
-      <button class="tf-btn" data-tf="1d">1D</button>
+      <button class="tf-btn active" data-days="1">1D</button>
+      <button class="tf-btn" data-days="7">7D</button>
+      <button class="tf-btn" data-days="14">14D</button>
+      <button class="tf-btn" data-days="30">1M</button>
+      <button class="tf-btn" data-days="90">3M</button>
+      <button class="tf-btn" data-days="365">1A</button>
     </div>
   </div>
   <div id="main">
@@ -71,17 +70,20 @@ body { background: #131722; color: #d1d4dc; font-family: -apple-system, BlinkMac
   </div>
 </div>
 <script>
-const PROXY = 'https://api.allorigins.win/raw?url=';
-const SYMBOLS = [
-  {s:'BTCUSDT',n:'Bitcoin'},{s:'ETHUSDT',n:'Ethereum'},{s:'SOLUSDT',n:'Solana'},
-  {s:'BNBUSDT',n:'BNB'},{s:'XRPUSDT',n:'XRP'},{s:'ADAUSDT',n:'Cardano'},
-  {s:'DOGEUSDT',n:'Dogecoin'},{s:'AVAXUSDT',n:'Avalanche'},
+const COINS = [
+  {id:'bitcoin',name:'BTC/USD'},
+  {id:'ethereum',name:'ETH/USD'},
+  {id:'solana',name:'SOL/USD'},
+  {id:'binancecoin',name:'BNB/USD'},
+  {id:'ripple',name:'XRP/USD'},
+  {id:'cardano',name:'ADA/USD'},
+  {id:'dogecoin',name:'DOGE/USD'},
+  {id:'avalanche-2',name:'AVAX/USD'},
 ];
-const TF_MAP = {'1m':'1m','5m':'5m','15m':'15m','1h':'1h','4h':'4h','1d':'1d'};
-let currentSymbol = 'BTCUSDT';
-let currentTf = '1m';
+
+let currentCoin = COINS[0];
+let currentDays = 1;
 let candles = [];
-let ws = null;
 const canvas = document.getElementById('chart');
 const ctx = canvas.getContext('2d');
 const loading = document.getElementById('loading');
@@ -98,10 +100,9 @@ function calcEMA(data, period) {
   const k = 2/(period+1);
   let ema = [], val = null;
   for(let i=0;i<data.length;i++){
-    if(i<period-1){ ema.push(null); continue; }
-    if(i===period-1){ val=data.slice(0,period).reduce((a,b)=>a+b,0)/period; ema.push(val); continue; }
-    val = data[i]*k + val*(1-k);
-    ema.push(val);
+    if(i<period-1){ema.push(null);continue;}
+    if(i===period-1){val=data.slice(0,period).reduce((a,b)=>a+b,0)/period;ema.push(val);continue;}
+    val=data[i]*k+val*(1-k);ema.push(val);
   }
   return ema;
 }
@@ -111,124 +112,127 @@ function draw() {
   const W=canvas.width, H=canvas.height;
   ctx.clearRect(0,0,W,H);
   ctx.fillStyle='#131722'; ctx.fillRect(0,0,W,H);
-  const PAD_L=10,PAD_R=60,PAD_T=20,PAD_B=30;
+  const PAD_L=10,PAD_R=70,PAD_T=20,PAD_B=30;
   const chartW=W-PAD_L-PAD_R, chartH=H-PAD_T-PAD_B;
   const closes=candles.map(c=>c.close);
   const ema50=calcEMA(closes,50), ema200=calcEMA(closes,200);
   let minP=Infinity,maxP=-Infinity;
-  candles.forEach(c=>{ if(c.low<minP)minP=c.low; if(c.high>maxP)maxP=c.high; });
+  candles.forEach(c=>{if(c.low<minP)minP=c.low;if(c.high>maxP)maxP=c.high;});
   const range=maxP-minP||1, pad=range*0.05;
   const lo=minP-pad, hi=maxP+pad;
   const N=candles.length;
   const candleW=Math.max(1,Math.min(12,chartW/N-1));
   const step=chartW/N;
-  function xOf(i){ return PAD_L+i*step+step/2; }
-  function yOf(v){ return PAD_T+(1-(v-lo)/(hi-lo))*chartH; }
+  function xOf(i){return PAD_L+i*step+step/2;}
+  function yOf(v){return PAD_T+(1-(v-lo)/(hi-lo))*chartH;}
   ctx.strokeStyle='#1e222d'; ctx.lineWidth=1;
   for(let i=0;i<=5;i++){
     const y=PAD_T+i*(chartH/5);
-    ctx.beginPath(); ctx.moveTo(PAD_L,y); ctx.lineTo(W-PAD_R,y); ctx.stroke();
+    ctx.beginPath();ctx.moveTo(PAD_L,y);ctx.lineTo(W-PAD_R,y);ctx.stroke();
     const val=hi-i*(hi-lo)/5;
-    ctx.fillStyle='#787b86'; ctx.font='10px sans-serif'; ctx.textAlign='left';
-    ctx.fillText(val.toFixed(val>100?0:4),W-PAD_R+4,y+4);
+    ctx.fillStyle='#787b86';ctx.font='10px sans-serif';ctx.textAlign='left';
+    ctx.fillText(val>100?val.toFixed(0):val.toFixed(4),W-PAD_R+4,y+4);
   }
   candles.forEach((c,i)=>{
-    const x=xOf(i), isUp=c.close>=c.open, col=isUp?'#26a69a':'#ef5350';
-    ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.moveTo(x,yOf(c.high)); ctx.lineTo(x,yOf(c.low)); ctx.stroke();
+    const x=xOf(i),isUp=c.close>=c.open,col=isUp?'#26a69a':'#ef5350';
+    ctx.strokeStyle=col;ctx.fillStyle=col;ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(x,yOf(c.high));ctx.lineTo(x,yOf(c.low));ctx.stroke();
     const oY=yOf(c.open),cY=yOf(c.close),bY=Math.min(oY,cY),bH=Math.max(Math.abs(oY-cY),1);
     ctx.fillRect(x-candleW/2,bY,candleW,bH);
   });
-  ctx.beginPath(); ctx.strokeStyle='#f5c842'; ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.strokeStyle='#f5c842';ctx.lineWidth=1.5;
   let started=false;
-  ema50.forEach((v,i)=>{ if(v===null)return; const x=xOf(i),y=yOf(v); if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y); });
+  ema50.forEach((v,i)=>{if(v===null)return;const x=xOf(i),y=yOf(v);if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);});
   ctx.stroke();
-  ctx.beginPath(); ctx.strokeStyle='#ef5350'; ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.strokeStyle='#ef5350';ctx.lineWidth=1.5;
   started=false;
-  ema200.forEach((v,i)=>{ if(v===null)return; const x=xOf(i),y=yOf(v); if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y); });
+  ema200.forEach((v,i)=>{if(v===null)return;const x=xOf(i),y=yOf(v);if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);});
   ctx.stroke();
-  ctx.fillStyle='#787b86'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+  ctx.fillStyle='#787b86';ctx.font='10px sans-serif';ctx.textAlign='center';
   const step2=Math.max(1,Math.floor(N/6));
   for(let i=0;i<N;i+=step2){
     const d=new Date(candles[i].time);
-    const label=currentTf==='1d'?d.toLocaleDateString('es',{month:'short',day:'numeric'}):d.toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'});
+    const label=currentDays<=1?d.toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'}):d.toLocaleDateString('es',{month:'short',day:'numeric'});
     ctx.fillText(label,xOf(i),H-8);
   }
 }
 
-async function loadCandles(symbol,tf) {
+async function loadCandles(coin, days) {
   loading.style.display='block';
+  loading.textContent='Cargando datos...';
   try {
-    const url = encodeURIComponent(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${TF_MAP[tf]}&limit=300`);
-    const res = await fetch(PROXY + url);
+    const url = `https://api.coingecko.com/api/v3/coins/${coin.id}/ohlc?vs_currency=usd&days=${days}`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('Error API');
     const data = await res.json();
-    candles=data.map(k=>({time:k[0],open:parseFloat(k[1]),high:parseFloat(k[2]),low:parseFloat(k[3]),close:parseFloat(k[4])}));
+    candles = data.map(k=>({time:k[0],open:k[1],high:k[2],low:k[3],close:k[4]}));
     loading.style.display='none';
     draw();
-    updatePrice(candles[candles.length-1].close);
-  } catch(e){ loading.textContent='Error cargando datos.'; }
+    if(candles.length){
+      const last = candles[candles.length-1].close;
+      const first = candles[0].open;
+      const ch = ((last-first)/first*100).toFixed(2);
+      const pEl = document.getElementById('price-display');
+      const cEl = document.getElementById('change-display');
+      pEl.textContent = last>100?last.toFixed(2):last.toFixed(4);
+      pEl.className = ch>=0?'up':'dn';
+      cEl.textContent = (ch>=0?'+':'')+ch+'%';
+      cEl.className = ch>=0?'up':'dn';
+    }
+  } catch(e){
+    loading.textContent='Error cargando. Intenta de nuevo.';
+  }
 }
 
-function updatePrice(price) {
-  document.getElementById('price-display').textContent=price>100?price.toFixed(2):price.toFixed(4);
-}
-
-function connectWS(symbol,tf) {
-  if(ws) ws.close();
-  ws=new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_${TF_MAP[tf]}`);
-  ws.onmessage=(e)=>{
-    const k=JSON.parse(e.data).k;
-    if(!k) return;
-    const last={time:k.t,open:parseFloat(k.o),high:parseFloat(k.h),low:parseFloat(k.l),close:parseFloat(k.c)};
-    if(candles.length&&candles[candles.length-1].time===last.time) candles[candles.length-1]=last;
-    else candles.push(last);
-    if(candles.length>500) candles.shift();
-    updatePrice(last.close); draw();
-  };
+async function loadWatchlistPrices() {
+  try {
+    const ids = COINS.map(c=>c.id).join(',');
+    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`);
+    const data = await res.json();
+    COINS.forEach(coin=>{
+      const d = data[coin.id];
+      if(!d) return;
+      const pEl=document.getElementById('wlp-'+coin.id);
+      const cEl=document.getElementById('wlc-'+coin.id);
+      const p=d.usd, ch=d.usd_24h_change||0;
+      if(pEl) pEl.textContent=p>100?p.toFixed(2):p.toFixed(4);
+      if(cEl){cEl.textContent=(ch>=0?'+':'')+ch.toFixed(2)+'%';cEl.className='wl-change '+(ch>=0?'up':'dn');}
+    });
+  } catch(e){}
 }
 
 function buildWatchlist() {
   const list=document.getElementById('wl-list');
   list.innerHTML='';
-  SYMBOLS.forEach(sym=>{
+  COINS.forEach(coin=>{
     const div=document.createElement('div');
-    div.className='wl-item'+(sym.s===currentSymbol?' active':'');
-    div.innerHTML=`<div class="wl-symbol">${sym.s.replace('USDT','')}/USDT</div><div class="wl-price" id="wlp-${sym.s}">--</div><div class="wl-change" id="wlc-${sym.s}">--</div>`;
+    div.className='wl-item'+(coin.id===currentCoin.id?' active':'');
+    div.innerHTML=`<div class="wl-symbol">${coin.name}</div><div class="wl-price" id="wlp-${coin.id}">--</div><div class="wl-change" id="wlc-${coin.id}">--</div>`;
     div.addEventListener('click',()=>{
-      currentSymbol=sym.s;
-      document.getElementById('symbol-display').textContent=sym.s;
+      currentCoin=coin;
+      document.getElementById('symbol-display').textContent=coin.name;
       document.querySelectorAll('.wl-item').forEach(el=>el.classList.remove('active'));
       div.classList.add('active');
-      loadCandles(sym.s,currentTf); connectWS(sym.s,currentTf);
+      loadCandles(coin,currentDays);
     });
     list.appendChild(div);
   });
 }
 
-async function loadWatchlistPrices() {
-  try {
-    const symbols=SYMBOLS.map(s=>`"${s.s}"`).join(',');
-    const url = encodeURIComponent(`https://api.binance.com/api/v3/ticker/24hr?symbols=[${symbols}]`);
-    const res = await fetch(PROXY + url);
-    const data = await res.json();
-    data.forEach(t=>{
-      const p=parseFloat(t.lastPrice), ch=parseFloat(t.priceChangePercent);
-      const pEl=document.getElementById('wlp-'+t.symbol), cEl=document.getElementById('wlc-'+t.symbol);
-      if(pEl) pEl.textContent=p>100?p.toFixed(2):p.toFixed(4);
-      if(cEl){ cEl.textContent=(ch>=0?'+':'')+ch.toFixed(2)+'%'; cEl.className='wl-change '+(ch>=0?'up':'dn'); }
-      if(t.symbol===currentSymbol){
-        document.getElementById('price-display').textContent=p>100?p.toFixed(2):p.toFixed(4);
-        document.getElementById('change-display').textContent=(ch>=0?'+':'')+ch.toFixed(2)+'%';
-      }
-    });
-  } catch(e){}
-}
+document.querySelectorAll('.tf-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.tf-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    currentDays=parseInt(btn.dataset.days);
+    loadCandles(currentCoin,currentDays);
+  });
+});
 
-buildWatchlist(); resize();
-loadCandles(currentSymbol,currentTf);
-connectWS(currentSymbol,currentTf);
+buildWatchlist();
+resize();
+loadCandles(currentCoin, currentDays);
 loadWatchlistPrices();
-setInterval(loadWatchlistPrices,5000);
+setInterval(loadWatchlistPrices, 30000);
 </script>
 </body>
 </html>
