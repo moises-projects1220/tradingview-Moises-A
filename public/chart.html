@@ -71,6 +71,7 @@ body { background: #131722; color: #d1d4dc; font-family: -apple-system, BlinkMac
   </div>
 </div>
 <script>
+const PROXY = 'https://api.allorigins.win/raw?url=';
 const SYMBOLS = [
   {s:'BTCUSDT',n:'Bitcoin'},{s:'ETHUSDT',n:'Ethereum'},{s:'SOLUSDT',n:'Solana'},
   {s:'BNBUSDT',n:'BNB'},{s:'XRPUSDT',n:'XRP'},{s:'ADAUSDT',n:'Cardano'},
@@ -158,8 +159,9 @@ function draw() {
 async function loadCandles(symbol,tf) {
   loading.style.display='block';
   try {
-    const res=await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${TF_MAP[tf]}&limit=300`);
-    const data=await res.json();
+    const url = encodeURIComponent(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${TF_MAP[tf]}&limit=300`);
+    const res = await fetch(PROXY + url);
+    const data = await res.json();
     candles=data.map(k=>({time:k[0],open:parseFloat(k[1]),high:parseFloat(k[2]),low:parseFloat(k[3]),close:parseFloat(k[4])}));
     loading.style.display='none';
     draw();
@@ -206,8 +208,9 @@ function buildWatchlist() {
 async function loadWatchlistPrices() {
   try {
     const symbols=SYMBOLS.map(s=>`"${s.s}"`).join(',');
-    const res=await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbols=[${symbols}]`);
-    const data=await res.json();
+    const url = encodeURIComponent(`https://api.binance.com/api/v3/ticker/24hr?symbols=[${symbols}]`);
+    const res = await fetch(PROXY + url);
+    const data = await res.json();
     data.forEach(t=>{
       const p=parseFloat(t.lastPrice), ch=parseFloat(t.priceChangePercent);
       const pEl=document.getElementById('wlp-'+t.symbol), cEl=document.getElementById('wlc-'+t.symbol);
